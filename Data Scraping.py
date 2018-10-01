@@ -222,7 +222,7 @@ class WorkFlow():
             extraction['PDF_Response'] = bounding_box_R
             content_extracted_R = self.content_extraction_pdf(bounding_box_R)
             extraction['Content_Extracted'] = content_extracted_R
-            extraction['PolicyNumber']=self._GetPolicyNumber(filename)
+            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
             extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
             extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
             extraction['FileLocation']=filename
@@ -239,7 +239,7 @@ class WorkFlow():
             extraction['Excel_Response'] = excel_texts
             content_extracted = self._content_extraction_excel(excel_texts)
             extraction['Content_Extracted'] = content_extracted
-            extraction['PolicyNumber']=self._GetPolicyNumber(filename)
+            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
             extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
             extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
             extraction['FileLocation']=filename
@@ -294,7 +294,7 @@ class WorkFlow():
                 self._GetAttachmentJson(AttFileName,timesleep)   
                 AttList.append(AttFileName)
             extraction['AttachmentList']= AttList  #Write a function to get a dictionary of Attachment
-            extraction['PolicyNumber']=self._GetPolicyNumber(filename)
+            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
             extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
             extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
             extraction['FileLocation']=filename
