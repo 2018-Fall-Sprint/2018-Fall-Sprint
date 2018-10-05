@@ -103,7 +103,7 @@ class WorkFlow():
         filename_img = filename_img.replace("\\","/")
         #print(filename_img)
         subprocess.call(["C:/Program Files (x86)/Tesseract-OCR/tesseract",filename_img,"C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp"])
-        with open('C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp.txt','r') as f:
+        with open('C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp.txt','r', encoding='utf8', errors='ignore') as f:
             Extracted_text = f.read()
         os.remove("C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp.txt")
         return Extracted_text
