@@ -12,7 +12,7 @@ import warnings
 import requests
 import pandas as pd
 import numpy as np
-import comtypes.client # word2pdf
+import comtypes.client 
 from wand.image import Image
 from PIL import Image as Image2
 import matplotlib.pyplot as plt
@@ -23,13 +23,14 @@ import hashlib
 import json
 import pickle
 import traceback
+import subprocess
 
 class WorkFlow():
     def __init__(self, filename):
         self.filename = filename   
-    def _GetPolicyNumber(self,filename):
-        PolicyNumber = filename.split('\\')[-2]
-        return PolicyNumber
+    def _GetSubmissionNumber(self,filename):
+        SubmissionNumber = filename.split('\\')[-2]
+        return SubmissionNumber
     def _GetJsonFileName(self,filename,file_format):
         File = "".join(filename.split("\\")[-1].split('.')[:-1])
         JsonFileDirectory=SharedFolderInitial+':\\Starr Sprint-F18\\Data\\JSON Output\\'
@@ -42,9 +43,9 @@ class WorkFlow():
             json.dump(extraction,outfile)
             print(Jsonfilename + ' Processed.')
             print()
-    def _word2PDF(self, filename): ## Word Filename
+    def _extract_Word(self, filename): ## Word Filename
         try:
-            file_format = filename.split('.')[-1].lower()
+            '''file_format = filename.split('.')[-1].lower()
             if file_format == "doc":
                 DocFileName=filename.split('\\')[-1].lower().replace('.doc','_doc.pdf')
             elif file_format == "docx":
@@ -54,19 +55,23 @@ class WorkFlow():
             PdfFileDirectory=os.path.join(word2pdfFolder,DocFileDirectory)
             if not os.path.exists(PdfFileDirectory):
                 os.makedirs(PdfFileDirectory)
-            PdfFileName=os.path.join(PdfFileDirectory,DocFileName)
+            PdfFileName=os.path.join(PdfFileDirectory,DocFileName)'''
             in_file = os.path.abspath(filename)
-            out_file = os.path.abspath(PdfFileName)
+            #out_file = os.path.abspath(PdfFileName)
+            
+
             doc = None
             word = comtypes.client.CreateObject('Word.Application')
             doc = word.Documents.Open(in_file)
-            doc.SaveAs(out_file, FileFormat=17)
-
+            #doc.SaveAs(out_file, FileFormat=17)
+            extracted_text={}
+            for ix,paragraph in enumerate(doc.paragraphs):
+                extracted_text[ix] = paragraph.range.text
             doc.Close()
             del doc
             word.Quit()
             del word
-            return PdfFileName
+            return extracted_text
         except:
             doc.Close() if doc is not None else False
             del doc
@@ -80,6 +85,7 @@ class WorkFlow():
         return new_filename
     
     
+    '''
     def _vision_api(self, filename): ## apply computer vision on image and get dictionary format response
         try:
             with open(filename, "rb") as image_file:
@@ -92,8 +98,16 @@ class WorkFlow():
             return analysis
         except:
             traceback.print_exc()
-    
-    def _vision_api_response(self, filename,timesleep): ## PDF Filename
+    '''
+    def _CallTesseract(self,filename_img):
+        filename_img = filename_img.replace("\\","/")
+        #print(filename_img)
+        subprocess.call(["C:/Program Files (x86)/Tesseract-OCR/tesseract",filename_img,"C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp"])
+        with open('C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp.txt','r') as f:
+            Extracted_text = f.read()
+        os.remove("C:/Users/gvtc4/OneDrive/Documents/GitHub/Pre-Processing/temp.txt")
+        return Extracted_text
+    def _OCR_response(self, filename): ## PDF Filename
         
         ## Split PDF file into pages
         file=filename.split('\\')[-1]
@@ -106,33 +120,29 @@ class WorkFlow():
         with(Image(filename=os.path.abspath(filename),resolution=400)) as source:
             images=source.sequence
             pages=len(images)
-            LastPage_file = self._get_new_filename(file)+'Page'+str(pages)+'.png'
-            LastPage_filename = os.path.join(new_directory,LastPage_file)
+            #LastPage_file = self._get_new_filename(file)+'Page'+str(pages)+'.png'
+            #LastPage_filename = os.path.join(new_directory,LastPage_file)
             response = []
-            if not os.path.exists(LastPage_filename):
-                for k in range(pages):
-                    ## Convert each pdf page to png
-                    new_file = self._get_new_filename(file)+'Page'+str(k+1)+'.png'
-                    new_filename = os.path.join(new_directory,new_file)
-                    # save png in new and separate folder
-                    Image(images[k]).save(filename=new_filename)
-                    ## Apply VisionAPI
-                    png_extraction = self._vision_api(new_filename)
-                    ## Add PNG location
-                    png_extraction['FileLocation_PNG'] = new_filename
-                    ## Append dictionary
-                    response.append(png_extraction)
-                    time.sleep(timesleep)
-            else:
-                for k in range(pages):
-                    png_extraction = self._vision_api(new_filename)
-                    ## Add PNG location
-                    png_extraction['FileLocation_PNG'] = new_filename
-                    ## Append dictionary
-                    response.append(png_extraction)
-                    time.sleep(timesleep)
+            for k in range(pages):
+                png_extraction={}
+                ## Convert each pdf page to png
+                new_png_file = self._get_new_filename(file)+'Page'+str(k+1)+'.png'
+                new_png_filepath = os.path.join(new_directory,new_png_file)
+                # save png in new and separate folder
+                Image(images[k]).save(filename=new_png_filepath)
+
+                '''## Apply VisionAPI
+                png_extraction = self._vision_api(new_filename)'''
+                png_extraction["Content_Extracted"] = self._CallTesseract(new_png_filepath)
+
+                ## Add PNG location
+                png_extraction['FileLocation_PNG'] = new_png_filepath
+                ## Append dictionary
+                response.append(png_extraction)
+
         return response
     
+    '''
     def _boundingbox_R(self, response): ## for readability
         boundingbox = []
         for analysis in response:
@@ -148,7 +158,7 @@ class WorkFlow():
                     bbox[line['boundingBox']] = text
             BBOX['Bounding_Box'] = bbox
             boundingbox.append(BBOX)
-        return boundingbox  
+        return boundingbox'''  
 
     def _num_to_col_letters(self, num):
         letters = ''
@@ -165,11 +175,11 @@ class WorkFlow():
             wb = excel.Workbooks.Open(os.path.abspath(filename))
             wb.CheckCompatibility=False
             excel_texts = {}       
-            for page in range(excel.Worksheets.Count):
-                if excel.Worksheets(page+1).UsedRange() is None:
+            for worksheet in excel.Worksheets:
+                if worksheet.UsedRange() is None:
                     continue
-                pagename = excel.Worksheets[page+1].Name
-                excel_text = [list(L) for L in excel.Worksheets(page+1).UsedRange()]
+                pagename = worksheet.Name
+                excel_text = [list(L) for L in worksheet.UsedRange()]
                 excel_texts[pagename] = {}
                 for i in range(len(excel_text)):
                     for j in range(len(excel_text[i])):
@@ -207,30 +217,28 @@ class WorkFlow():
             Recipients.append(RecipientEmail)
         return Recipients
 
-    def ParsePdfFile(self, filename,timesleep): ## create JSON and save to database
-        if self._extract_Excel(filename) is not None:
-            start_time = time.time()
-            ## Identify file format for standardization
-            file_format = filename.split(".")[-1].lower()
-            if file_format == "pdf":
-                pdf_filename = filename
-            elif file_format == "doc" or file_format == "docx":
-                pdf_filename =self._word2PDF(filename)
-            extraction = {}
-            vision_response = self._vision_api_response(pdf_filename,timesleep)
-            bounding_box_R = self._boundingbox_R(vision_response)
-            extraction['PDF_Response'] = bounding_box_R
-            content_extracted_R = self.content_extraction_pdf(bounding_box_R)
-            extraction['Content_Extracted'] = content_extracted_R
-            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
-            extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
-            extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
-            extraction['FileLocation']=filename
-            elapse_time = time.time() - start_time
-            date_time = datetime.datetime.utcnow()
-            extraction['TotalElapsedTimeMs'] = str(elapse_time/60.0)
-            extraction['ProcessedDateTime'] = str(date_time)
-            return extraction  
+    def Parse_PDF_Doc_File(self, filename): ## create JSON and save to database
+        start_time = time.time()
+        ## Identify file format for standardization
+        file_format = filename.split(".")[-1].lower()
+        if file_format == "pdf":
+            Response = self._OCR_response(filename)
+        elif file_format in ["doc","docx"]:
+            Response =self._extract_Word(filename)
+        extraction = {}
+        #bounding_box_R = self._boundingbox_R(vision_response)
+        #extraction['PDF_Response'] = bounding_box_R
+        #content_extracted_R = self.content_extraction_pdf(bounding_box_R)
+        extraction['Content_Extracted'] = Response
+        extraction['SubmissionNumber']=self._GetSubmissionNumber(filename)
+        extraction['FileType']=file_format
+        extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
+        extraction['FileLocation']=filename
+        elapse_time = time.time() - start_time
+        date_time = datetime.datetime.utcnow()
+        extraction['TotalElapsedTimeMs'] = str(elapse_time/60.0)
+        extraction['ProcessedDateTime'] = str(date_time)
+        return extraction  
     def ParseExcelFile(self, filename):
         if self._extract_Excel(filename) is not None:
             start_time = time.time()
@@ -239,7 +247,7 @@ class WorkFlow():
             extraction['Excel_Response'] = excel_texts
             content_extracted = self._content_extraction_excel(excel_texts)
             extraction['Content_Extracted'] = content_extracted
-            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
+            extraction['SubmissionNumber']=self._GetSubmissionNumber(filename)
             extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
             extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
             extraction['FileLocation']=filename
@@ -248,7 +256,7 @@ class WorkFlow():
             date_time = datetime.datetime.utcnow()
             extraction['ProcessedDateTime'] = str(date_time)
             return extraction    
-    def _GetAttachmentJson(self,Attachment,timesleep):
+    def _GetAttachmentJson(self,Attachment):
         file_format = Attachment.split('.')[-1].lower()
         if file_format in ['xls', 'xlsx', 'csv']:
             JsonFileName = self._GetJsonFileName(Attachment,file_format)
@@ -258,15 +266,15 @@ class WorkFlow():
         elif file_format in ['doc', 'docx','pdf']:
             JsonFileName = self._GetJsonFileName(Attachment,file_format)
             if not os.path.exists(JsonFileName):
-                extraction = self.ParsePdfFile(Attachment,timesleep)
+                extraction = self.Parse_PDF_Doc_File(Attachment)
                 self._ToJson(JsonFileName,extraction)
-        elif file_format in ['msg']:
-            AttIsMsg.append(Attachment)
+#        elif file_format in ['msg']:
+#            AttIsMsg.append(Attachment)
 #             JsonFileName = self._GetJsonFileName(Attachment,file_format)
 #             if not os.path.exists(JsonFileName):
-#                 extraction = self.ParseOutlookFile(Attachment,timesleep)
+#                 extraction = self.ParseOutlookFile(Attachment)
 #                 self._ToJson(JsonFileName,extraction)
-    def ParseOutlookFile(self,filename,timesleep):
+    def ParseOutlookFile(self,filename,GetAtt):
         try:
             msg = None
             start_time = time.time()
@@ -291,10 +299,11 @@ class WorkFlow():
                 if not os.path.exists(MsgAttachment_directory):
                     os.makedirs(MsgAttachment_directory)
                 att.SaveAsFile(os.path.abspath(AttFileName))
-                self._GetAttachmentJson(AttFileName,timesleep)   
+                if GetAtt == True:
+                    self._GetAttachmentJson(AttFileName)   
                 AttList.append(AttFileName)
             extraction['AttachmentList']= AttList  #Write a function to get a dictionary of Attachment
-            extraction['SubmissionNumber']=self._GetPolicyNumber(filename)
+            extraction['SubmissionNumber']=self._GetSubmissionNumber(filename)
             extraction['FileType']=filename.split("\\")[-1].split('.')[-1].lower()
             extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
             extraction['FileLocation']=filename
@@ -310,7 +319,7 @@ class WorkFlow():
             del msg
             del outlook 
             traceback.print_exc()
-    def execute_workflow(self,filename,timesleep): # identification of input file type
+    def execute_workflow(self,filename,GetAtt): # identification of input file type
         file_format = filename.split('.')[-1].lower()
         if file_format in ['xls', 'xlsx', 'csv']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
@@ -320,25 +329,24 @@ class WorkFlow():
         elif file_format in ['doc', 'docx','pdf']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
             if not os.path.exists(JsonFileName):
-                extraction = self.ParsePdfFile(filename,timesleep)
+                extraction = self.Parse_PDF_Doc_File(filename)
                 self._ToJson(JsonFileName,extraction)
         elif file_format in ['msg']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
             if not os.path.exists(JsonFileName):
-                extraction = self.ParseOutlookFile(filename,timesleep)
+                extraction = self.ParseOutlookFile(filename,GetAtt)
                 self._ToJson(JsonFileName,extraction)
 if __name__ == "__main__":
     PickleFileName = input("Please Enter FileList File Name. Such as FileList1.pickle:  ")
     SharedFolderInitial = input("Please Enter Your Shared Folder Initial. Such as Z:   ")
-    subscription_key = input("Please Enter Your Vision API Subscription Key:   ")
-    vision_base_url = input("Please Enter Your Vision API Base URL:   ")
-    subscription_key = '798fad47d608432a9786f910a0b919db'
-    vision_base_url = "https://southcentralus.api.cognitive.microsoft.com/vision/v1.0"
-    ocr_url = vision_base_url + "/ocr"
+ #   subscription_key = input("Please Enter Your Vision API Subscription Key:   ")
+ #   vision_base_url = input("Please Enter Your Vision API Base URL:   ")
+ #   subscription_key = '798fad47d608432a9786f910a0b919db'
+ #   vision_base_url = "https://southcentralus.api.cognitive.microsoft.com/vision/v1.0"
+ #   ocr_url = vision_base_url + "/ocr"
 
     with open(PickleFileName, "rb") as fp:   #Pickling
         file_list=list(pickle.load(fp))
-
     NumStart=len(file_list)
     ProcessedFileList=[]
     AttIsMsg=[]
@@ -346,9 +354,10 @@ if __name__ == "__main__":
         Extraction =WorkFlow(eachfile)
         print("Processing " + eachfile)
         try:
-            Extraction.execute_workflow(filename=eachfile,timesleep=0)
+            Extraction.execute_workflow(filename=eachfile,GetAtt=True)
             ProcessedFileList.append(eachfile)
-        except:
+        except Exception as e:
+            print(e)
             continue
         file_list.remove(eachfile)
         NumLeft = len(file_list)
