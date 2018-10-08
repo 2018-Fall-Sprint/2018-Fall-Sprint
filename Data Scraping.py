@@ -25,6 +25,9 @@ import pickle
 import traceback
 import subprocess
 
+is_GetPDF = False
+is_GetAtt = True
+
 class WorkFlow():
     def __init__(self, filename):
         self.filename = filename   
@@ -172,7 +175,7 @@ class WorkFlow():
         try:
             wb=None
             excel = Dispatch('Excel.Application')
-            wb = excel.Workbooks.Open(os.path.abspath(filename))
+            wb = excel.Workbooks.Open(os.path.abspath(filename),UpdateLinks=0)
             wb.CheckCompatibility=False
             excel_texts = {}       
             for worksheet in excel.Worksheets:
@@ -222,6 +225,8 @@ class WorkFlow():
         ## Identify file format for standardization
         file_format = filename.split(".")[-1].lower()
         if file_format == "pdf":
+            if is_GetPDF == False:
+                return
             Response = self._OCR_response(filename)
         elif file_format in ["doc","docx"]:
             Response =self._extract_Word(filename)
@@ -262,11 +267,15 @@ class WorkFlow():
             JsonFileName = self._GetJsonFileName(Attachment,file_format)
             if not os.path.exists(JsonFileName):
                 extraction = self.ParseExcelFile(Attachment)
+                if extraction is None:
+                    raise ValueError("Extraction is None")
                 self._ToJson(JsonFileName,extraction)
         elif file_format in ['doc', 'docx','pdf']:
             JsonFileName = self._GetJsonFileName(Attachment,file_format)
             if not os.path.exists(JsonFileName):
                 extraction = self.Parse_PDF_Doc_File(Attachment)
+                if extraction is None:
+                    raise ValueError("Extraction is None")
                 self._ToJson(JsonFileName,extraction)
 #        elif file_format in ['msg']:
 #            AttIsMsg.append(Attachment)
@@ -274,7 +283,7 @@ class WorkFlow():
 #             if not os.path.exists(JsonFileName):
 #                 extraction = self.ParseOutlookFile(Attachment)
 #                 self._ToJson(JsonFileName,extraction)
-    def ParseOutlookFile(self,filename,GetAtt):
+    def ParseOutlookFile(self,filename):
         try:
             msg = None
             start_time = time.time()
@@ -299,7 +308,7 @@ class WorkFlow():
                 if not os.path.exists(MsgAttachment_directory):
                     os.makedirs(MsgAttachment_directory)
                 att.SaveAsFile(os.path.abspath(AttFileName))
-                if GetAtt == True:
+                if is_GetAtt == True:
                     self._GetAttachmentJson(AttFileName)   
                 AttList.append(AttFileName)
             extraction['AttachmentList']= AttList  #Write a function to get a dictionary of Attachment
@@ -319,22 +328,28 @@ class WorkFlow():
             del msg
             del outlook 
             traceback.print_exc()
-    def execute_workflow(self,filename,GetAtt): # identification of input file type
+    def execute_workflow(self,filename): # identification of input file type
         file_format = filename.split('.')[-1].lower()
         if file_format in ['xls', 'xlsx', 'csv']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
             if not os.path.exists(JsonFileName):
                 extraction = self.ParseExcelFile(filename)
+                if extraction is None:
+                    raise ValueError("Extraction is None")
                 self._ToJson(JsonFileName,extraction)
         elif file_format in ['doc', 'docx','pdf']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
             if not os.path.exists(JsonFileName):
                 extraction = self.Parse_PDF_Doc_File(filename)
+                if extraction is None:
+                    raise ValueError("Extraction is None")
                 self._ToJson(JsonFileName,extraction)
         elif file_format in ['msg']:
             JsonFileName = self._GetJsonFileName(filename,file_format)
             if not os.path.exists(JsonFileName):
-                extraction = self.ParseOutlookFile(filename,GetAtt)
+                extraction = self.ParseOutlookFile(filename)
+                if extraction is None:
+                    raise ValueError("Extraction is None")
                 self._ToJson(JsonFileName,extraction)
 if __name__ == "__main__":
     PickleFileName = input("Please Enter FileList File Name. Such as FileList1.pickle:  ")
@@ -354,7 +369,7 @@ if __name__ == "__main__":
         Extraction =WorkFlow(eachfile)
         print("Processing " + eachfile)
         try:
-            Extraction.execute_workflow(filename=eachfile,GetAtt=True)
+            Extraction.execute_workflow(filename=eachfile)
             ProcessedFileList.append(eachfile)
         except Exception as e:
             print(e)
