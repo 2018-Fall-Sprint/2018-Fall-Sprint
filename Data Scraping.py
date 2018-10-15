@@ -5,14 +5,8 @@ import os
 import time
 import datetime
 import warnings
-import requests
 import pandas as pd
 import numpy as np
-import comtypes.client 
-from wand.image import Image
-from win32com.client import Dispatch
-import win32com
-from matplotlib.patches import Rectangle
 import hashlib
 import json
 import pickle
@@ -21,7 +15,7 @@ import traceback
 is_getExcel=False
 is_getWord=True
 is_getPdf=False
-is_pdf2png =True
+is_pdf2png =False
 is_getMsg=False
 
 def _GetSubmissionNumber(filename):
@@ -59,6 +53,7 @@ class ExcelParser():
         return ''.join(reversed(letters))
 
     def _extract_Excel(self, filename): # Excel Filename, end with xls/xlsx/csv
+        from win32com.client import Dispatch
         try:
             wb=None
             excel = Dispatch('Excel.Application')
@@ -158,6 +153,7 @@ class OutlookParser():
 #                 extraction = self.ParseOutlookFile(Attachment)
 #                 self._ToJson(JsonFileName,extraction)
     def _ParseOutlookFile(self,filename):
+        import win32com
         try:
             msg = None
             start_time = time.time()
@@ -213,6 +209,7 @@ class WordConverter():
     def __init__(self):
         pass
     def word2pdf(self, filename): ## Word Filename
+        import comtypes.client
         try:
             file_format = filename.split('.')[-1].lower()
             if file_format == "doc":
@@ -250,6 +247,7 @@ class PdfParser():
         new_filename = filename.replace('.pdf','_pdf2pngConversion').replace('.PDF','_pdf2pngConversion')
         return new_filename
     def pdf2png(self,filename):
+        from wand.image import Image
         ## Split PDF file into pages
         file=filename.split('\\')[-1]
         filepath ='\\'.join(filename.split('\\')[:-1])
@@ -269,6 +267,7 @@ class PdfParser():
                 Image(images[k]).save(filename=new_png_filepath)
 
     def _vision_api(self, filename): ## apply computer vision on image and get dictionary format response
+        import requests
         try:
             with open(filename, "rb") as image_file:
                 files = {'field_name': image_file}
@@ -371,7 +370,7 @@ if __name__ == "__main__":
         )
     parser.add_argument('--Ini', action="store", dest="SharedFolderInitial", required=True)
     parser.add_argument('--F', action="store", dest="FileList", required=True)
-    parser.add_argument('--Vs', action="store", dest="visionAPI", required=True)
+    parser.add_argument('--Vs', action="store", dest="visionAPI", required=False)
    
     args =  vars(parser.parse_args())
 #     print(args)
@@ -379,13 +378,14 @@ if __name__ == "__main__":
     # set SharedFolderInitial
     SharedFolderInitial = args['SharedFolderInitial']
     FileList = args['FileList']
-    visionAPI = args['visionAPI'] 
-
-    with open("visionAPI.json", "r") as V:   #Pickling
-        visionAPI = json.load(V)
-    subscription_key=visionAPI['subscription_key']
-    vision_base_url=visionAPI['vision_base_url']
-    ocr_url = vision_base_url + "/ocr"
+    visionAPI = args['visionAPI']
+    
+    if visionAPI is not None:
+        with open("visionAPI.json", "r") as V:   #Pickling
+            visionAPI = json.load(V)
+        subscription_key=visionAPI['subscription_key']
+        vision_base_url=visionAPI['vision_base_url']
+        ocr_url = vision_base_url + "/ocr"
     
 
     with open(FileList, "rb") as fp:   #Pickling
