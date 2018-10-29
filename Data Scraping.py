@@ -13,9 +13,9 @@ import pickle
 import traceback
 
 is_getExcel=False
-is_getWord=True
-is_getPdf=False
-is_pdf2png =False
+is_getWord=False
+is_getPdf=True
+is_pdf2png = False
 is_getMsg=False
 
 def _GetSubmissionNumber(filename):
@@ -31,6 +31,7 @@ class CreateJSON():
         FileDirectory = '\\'.join(filename.split('\\')[-6:-1])
         JsonFolder = SharedFolderInitial+":\\Starr Sprint-F18\\Data\\JSON Output\\"
         new_directory=os.path.join(JsonFolder,FileDirectory)
+#         print(new_directory)
         if not os.path.exists(new_directory):
             os.makedirs(new_directory)
         JsonFileName = File +"_"+ file_format +".json"
@@ -243,33 +244,40 @@ class WordConverter():
 class PdfParser():
     def __init__(self):
         self.CreateJSON=CreateJSON()
-    def _get_new_filename(self,filename): ## PNG Filename
-        new_filename = filename.replace('.pdf','_pdf2pngConversion').replace('.PDF','_pdf2pngConversion')
+    def _get_new_filename(self,file): ## PNG Filename
+        new_filename = file.replace('.pdf','_pdf2pngConversion').replace('.PDF','_pdf2pngConversion')
         return new_filename
-    def pdf2png(self,filename):
+    def pdf2png(self):
         from wand.image import Image
+        from PyPDF2 import PdfFileReader
         ## Split PDF file into pages
-        file=filename.split('\\')[-1]
-        filepath ='\\'.join(filename.split('\\')[:-1])
-        FileDirectory = '\\'.join(filename.split('\\')[-6:])
+        file=self.filename.split('\\')[-1]
+        filepath ='\\'.join(self.filename.split('\\')[:-1])
+        FileDirectory = '\\'.join(self.filename.split('\\')[-6:])
         pngFolder = SharedFolderInitial+":\\Starr Sprint-F18\\Data\\360-documents-png\\"
         new_directory=os.path.join(pngFolder,FileDirectory)
         if not os.path.exists(new_directory):
             os.makedirs(new_directory)
-        with(Image(filename=os.path.abspath(filename),resolution=300)) as source:
+        exist_pages = len(os.listdir(new_directory))
+        
+        pdf_pages = PdfFileReader(open(self.filename,'rb')).getNumPages()
+        if exist_pages == pdf_pages:
+            return
+        with(Image(filename=os.path.abspath(self.filename),resolution=300)) as source:
             images=source.sequence
-            pages=len(images)
+            pages=len(images)            
             for k in range(pages):
                 ## Convert each pdf page to png
                 new_png_file = self._get_new_filename(file)+'Page'+str(k+1)+'.png'
                 new_png_filepath = os.path.join(new_directory,new_png_file)
                 # save png in new and separate folder
-                Image(images[k]).save(filename=new_png_filepath)
+                if not os.path.exists(new_png_filepath):
+                    Image(images[k]).save(filename=new_png_filepath)
 
-    def _vision_api(self, filename): ## apply computer vision on image and get dictionary format response
+    def _vision_api(self,png_filepath): ## apply computer vision on image and get dictionary format response
         import requests
         try:
-            with open(filename, "rb") as image_file:
+            with open(png_filepath, "rb") as image_file:
                 files = {'field_name': image_file}
                 headers  = {'Ocp-Apim-Subscription-Key': subscription_key}
                 params   = {'language': 'unk', 'detectOrientation ': 'true'}
@@ -280,9 +288,11 @@ class PdfParser():
         except:
             traceback.print_exc()
 
-    def _OCR_response(self, filename): ## PDF Filename
-        file=filename.split('\\')[-1]
-        FileDirectory = '\\'.join(filename.split('\\')[-6:])
+
+    def _OCR_response(self): ## PDF Filename
+        
+        file=self.filename.split('\\')[-1]
+        FileDirectory = '\\'.join(self.filename.split('\\')[-6:])
         pngFolder = SharedFolderInitial+":\\Starr Sprint-F18\\Data\\360-documents-png\\"
         PNG_directory=os.path.join(pngFolder,FileDirectory)
 
@@ -291,15 +301,21 @@ class PdfParser():
             if page.split(".")[-1].lower() == "png":
                 page_num+=1
         response = []       
-        for k in range(pages):
+        for k in range(page_num):
             png_file = self._get_new_filename(file)+'Page'+str(k+1)+'.png'
             png_filepath = os.path.join(PNG_directory,png_file)
 
             png_extraction={}
             png_extraction = self._vision_api(png_filepath)
-            png_extraction['FileLocation_PNG'] = png_filepath
-            response.append(png_extraction)
-        return response
+            if png_extraction:
+                png_extraction['FileLocation_PNG'] = png_filepath
+                response.append(png_extraction)
+            else:
+                png_extraction={}
+                png_extraction['FileLocation_PNG'] = png_filepath
+                response.append(png_extraction)
+        if response:
+            return response
     
     def _concatContent(self, response): # concat text to one string
         contentextracted = []
@@ -313,33 +329,34 @@ class PdfParser():
         contentextracted = ' '.join(contentextracted)
         return contentextracted
     
-    def _ParsePdfFile(self, filename): ## create JSON and save to database
+    def _ParsePdfFile(self): ## create JSON and save to database
         start_time = time.time()
         ## Identify file format for standardization
-        file_format = filename.split(".")[-1].lower()
+        file_format = self.filename.split(".")[-1].lower()
 
-        Response = self._OCR_response(filename)
+        Response = self._OCR_response()
 
         extraction = {}
         extraction['PDF_Response'] = Response
         content_concated = self._concatContent(Response)
         extraction['Content_Extracted'] = content_concated
-        extraction['SubmissionNumber']=_GetSubmissionNumber(filename)
+        extraction['SubmissionNumber']=_GetSubmissionNumber(self.filename)
         extraction['FileType']=file_format
         extraction['FileID']=hashlib.md5(str(extraction).encode('utf-8')).hexdigest()
-        extraction['FileLocation']=filename
+        extraction['FileLocation']=self.filename
         elapse_time = time.time() - start_time
         date_time = datetime.datetime.utcnow()
         extraction['TotalElapsedTimeMs'] = str(elapse_time/60.0)
         extraction['ProcessedDateTime'] = str(date_time)
         return extraction
-    def dump2Json(self,filename):              
-        JsonFileName = self.CreateJSON._GetJsonFileName(filename)
+    def dump2Json(self,filename):
+        self.filename = filename
+        JsonFileName = self.CreateJSON._GetJsonFileName(self.filename)
         if not os.path.exists(JsonFileName):
-            extraction = self._ParsePdfFile(filename)
+            extraction = self._ParsePdfFile()
             if extraction is None:
                 raise ValueError("Extraction is None")
-            self.CreateJSON.ToJson(filename,extraction)
+            self.CreateJSON.ToJson(self.filename,extraction)
 class Workflow():
     def __init__(self):
         self.OutlookParser = OutlookParser()
@@ -369,7 +386,7 @@ if __name__ == "__main__":
             description="Data Scraper"
         )
     parser.add_argument('--Ini', action="store", dest="SharedFolderInitial", required=True)
-    parser.add_argument('--F', action="store", dest="FileList", required=True)
+    parser.add_argument('--F', action="store", dest="FileList", required=False)
     parser.add_argument('--Vs', action="store", dest="visionAPI", required=False)
    
     args =  vars(parser.parse_args())
@@ -387,10 +404,11 @@ if __name__ == "__main__":
         vision_base_url=visionAPI['vision_base_url']
         ocr_url = vision_base_url + "/ocr"
     
-
-    with open(FileList, "rb") as fp:   #Pickling
-        file_list=list(pickle.load(fp))
-
+    if FileList is not None:
+        with open(FileList, "rb") as fp:   #Pickling
+            file_list=list(pickle.load(fp))
+    else:
+        file_list = [input("Enter File Path:")]
     NumStart=len(file_list)
     ProcessedFileList=[]
     AttIsMsg=[]
@@ -400,8 +418,8 @@ if __name__ == "__main__":
         try:
             workflow.execute_workflow(filename=eachfile)
             ProcessedFileList.append(eachfile)
-        except Exception as e:
-            print(e)
+        except:
+            traceback.print_exc()
             continue
         file_list.remove(eachfile)
         NumLeft = len(file_list)
